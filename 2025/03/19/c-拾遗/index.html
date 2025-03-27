@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width">
+<meta name="theme-color" content="#222"><meta name="generator" content="Hexo 6.3.0">
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" integrity="sha256-dABdfBfUoC8vJUBOwGVdm8L9qlMWaHTIfXt+7GnZCIo=" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.1.1/animate.min.css" integrity="sha256-PR7ttpcvz8qrF57fur/yAx1qXMFJeJFiA6pSzWi0OIE=" crossorigin="anonymous">
+
+<script class="next-config" data-name="main" type="application/json">{"hostname":"aaoligei.github.io","root":"/","images":"/images","scheme":"Muse","darkmode":false,"version":"8.22.0","exturl":false,"sidebar":{"position":"left","width_expanded":320,"width_dual_column":240,"display":"post","padding":18,"offset":12},"hljswrap":true,"copycode":{"enable":false,"style":null},"fold":{"enable":false,"height":500},"bookmark":{"enable":false,"color":"#222","save":"auto"},"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"stickytabs":false,"motion":{"enable":true,"async":false,"duration":200,"transition":{"menu_item":"fadeInDown","post_block":"fadeIn","post_header":"fadeInDown","post_body":"fadeInDown","coll_header":"fadeInLeft","sidebar":"fadeInUp"}},"prism":false,"i18n":{"placeholder":"搜索...","empty":"没有找到任何搜索结果：${query}","hits_time":"找到 ${hits} 个搜索结果（用时 ${time} 毫秒）","hits":"找到 ${hits} 个搜索结果"}}</script><script src="/js/config.js"></script>
+
+    <meta name="description" content="c++ 拾遗 1，左值和右值 左值是可以被修改的值，而右值则不能被修改，一般而言变量都是左值，而常数则是右值。 左值引用和右值引用 int a &#x3D; 1; int &amp;b &#x3D; a; int &amp;&amp;c &#x3D; 1; 此时b为左值引用，因为a是左值。而c则是右值引用，注意右值引用要用&amp;&amp;。 std::string function">
+<meta property="og:type" content="article">
+<meta property="og:title" content="c++ 拾遗">
+<meta property="og:url" content="https://aaoligei.github.io/2025/03/19/c-%E6%8B%BE%E9%81%97/index.html">
+<meta property="og:site_name" content="游戏技术博客">
+<meta property="og:description" content="c++ 拾遗 1，左值和右值 左值是可以被修改的值，而右值则不能被修改，一般而言变量都是左值，而常数则是右值。 左值引用和右值引用 int a &#x3D; 1; int &amp;b &#x3D; a; int &amp;&amp;c &#x3D; 1; 此时b为左值引用，因为a是左值。而c则是右值引用，注意右值引用要用&amp;&amp;。 std::string function">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2025-03-19T08:46:30.000Z">
+<meta property="article:modified_time" content="2025-03-27T05:35:18.590Z">
+<meta property="article:author" content="游戏开发者">
+<meta property="article:tag" content="c++">
+<meta name="twitter:card" content="summary">
+
+
+<link rel="canonical" href="https://aaoligei.github.io/2025/03/19/c-%E6%8B%BE%E9%81%97/">
+
+
+<script class="next-config" data-name="page" type="application/json">{"sidebar":"","isHome":false,"isPost":true,"lang":"zh-CN","comments":true,"permalink":"https://aaoligei.github.io/2025/03/19/c-%E6%8B%BE%E9%81%97/","path":"2025/03/19/c-拾遗/","title":"c++ 拾遗"}</script>
+
+<script class="next-config" data-name="calendar" type="application/json">""</script>
+<title>c++ 拾遗 | 游戏技术博客</title>
+  
+
+
+
+
+
+
+
+
+  <noscript>
+    <link rel="stylesheet" href="/css/noscript.css">
+  </noscript>
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css">
+<link rel="stylesheet" href="/css/prism-line-numbers.css" type="text/css"></head>
+
+<body itemscope itemtype="http://schema.org/WebPage" class="use-motion">
+  <div class="headband"></div>
+
+  <main class="main">
+    <div class="column">
+      <header class="header" itemscope itemtype="http://schema.org/WPHeader"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏" role="button">
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <i class="logo-line"></i>
+      <p class="site-title">游戏技术博客</p>
+      <i class="logo-line"></i>
+    </a>
+      <p class="site-subtitle" itemprop="description">专注于游戏引擎、渲染和算法</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger" aria-label="搜索" role="button">
+    </div>
+  </div>
+</div>
+
+
+
+
+
+
+
+</header>
+        
+  
+  <aside class="sidebar">
+
+    <div class="sidebar-inner sidebar-nav-active sidebar-toc-active">
+      <ul class="sidebar-nav">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <div class="sidebar-panel-container">
+        <!--noindex-->
+        <div class="post-toc-wrap sidebar-panel">
+            <div class="post-toc animated"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#c-%E6%8B%BE%E9%81%97"><span class="nav-number">1.</span> <span class="nav-text">c++ 拾遗</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%B7%A6%E5%80%BC%E5%92%8C%E5%8F%B3%E5%80%BC"><span class="nav-number">1.1.</span> <span class="nav-text">1，左值和右值</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%B7%A6%E5%80%BC%E5%BC%95%E7%94%A8%E5%92%8C%E5%8F%B3%E5%80%BC%E5%BC%95%E7%94%A8"><span class="nav-number">1.1.1.</span> <span class="nav-text">左值引用和右值引用</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%8C%87%E9%92%88"><span class="nav-number">1.2.</span> <span class="nav-text">2，指针</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%85%B3%E4%BA%8Emallocfree%E4%BB%A5%E5%8F%8Anewdelete"><span class="nav-number">1.2.1.</span> <span class="nav-text">关于malloc，free以及new，delete</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%8C%87%E9%92%88%E7%9A%84%E6%83%85%E5%86%B5"><span class="nav-number">1.2.2.</span> <span class="nav-text">指针的情况</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%87%E8%83%BD%E6%8C%87%E9%92%88"><span class="nav-number">1.2.3.</span> <span class="nav-text">万能指针</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#const"><span class="nav-number">1.3.</span> <span class="nav-text">3，const</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#auto%E5%92%8Cdecltype"><span class="nav-number">1.4.</span> <span class="nav-text">4，auto和decltype</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%BB%93%E6%9E%84%E4%BD%93"><span class="nav-number">1.5.</span> <span class="nav-text">5，结构体</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BB%BF%E5%87%BD%E6%95%B0"><span class="nav-number">1.6.</span> <span class="nav-text">6，仿函数</span></a></li></ol></li></ol></div>
+        </div>
+        <!--/noindex-->
+
+        <div class="site-overview-wrap sidebar-panel">
+          <div class="site-author animated" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">游戏开发者</p>
+  <div class="site-description" itemprop="description">分享游戏技术开发经验与知识</div>
+</div>
+<div class="site-state-wrap animated">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+        <a href="/archives/">
+          <span class="site-state-item-count">4</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+        <span class="site-state-item-count">2</span>
+        <span class="site-state-item-name">分类</span>
+      </div>
+      <div class="site-state-item site-state-tags">
+        <span class="site-state-item-count">11</span>
+        <span class="site-state-item-name">标签</span>
+      </div>
+  </nav>
+</div>
+
+        </div>
+      </div>
+    </div>
+
+    
+  </aside>
+
+
+    </div>
+
+    <div class="main-inner post posts-expand">
+
+
+  
+
+
+<div class="post-block">
+  
+  
+
+  <article itemscope itemtype="http://schema.org/Article" class="post-content" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://aaoligei.github.io/2025/03/19/c-%E6%8B%BE%E9%81%97/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="游戏开发者">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="游戏技术博客">
+      <meta itemprop="description" content="分享游戏技术开发经验与知识">
+    </span>
+
+    <span hidden itemprop="post" itemscope itemtype="http://schema.org/CreativeWork">
+      <meta itemprop="name" content="c++ 拾遗 | 游戏技术博客">
+      <meta itemprop="description" content="">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          c++ 拾遗
+        </h1>
+
+        <div class="post-meta-container">
+          <div class="post-meta">
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar"></i>
+      </span>
+      <span class="post-meta-item-text">发表于</span>
+
+      <time title="创建时间：2025-03-19 16:46:30" itemprop="dateCreated datePublished" datetime="2025-03-19T16:46:30+08:00">2025-03-19</time>
+    </span>
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar-check"></i>
+      </span>
+      <span class="post-meta-item-text">更新于</span>
+      <time title="修改时间：2025-03-27 13:35:18" itemprop="dateModified" datetime="2025-03-27T13:35:18+08:00">2025-03-27</time>
+    </span>
+
+  
+</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody"><h1 id="c-拾遗">c++ 拾遗</h1>
+<h2 id="左值和右值">1，左值和右值</h2>
+<p>左值是可以被修改的值，而右值则不能被修改，一般而言变量都是左值，而常数则是右值。</p>
+<h3 id="左值引用和右值引用">左值引用和右值引用</h3>
+<pre class="line-numbers language-c++" data-language="c++"><code class="language-c++">int a &#x3D; 1;
+int &amp;b &#x3D; a;
+int &amp;&amp;c &#x3D; 1;<span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span></span></code></pre>
+<p>此时b为左值引用，因为a是左值。而c则是右值引用，注意右值引用要用&amp;&amp;。</p>
+<pre class="line-numbers language-c++" data-language="c++"><code class="language-c++">std::string function() &#123;
+    return &quot;hello world&quot;;
+&#125;
+std::string&amp;&amp; a &#x3D; function();<span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span><span></span></span></code></pre>
+<p>右值引用常用于接收函数将亡返回值，节省开销。
+此外，右值用于移动语义和完美转发（后面填坑）。</p>
+<h2 id="指针">2，指针</h2>
+<h3
+id="关于mallocfree以及newdelete">关于malloc，free以及new，delete</h3>
+<p>malloc和free是c语言的库函数，而new和delete是c++的运算符。
+malloc和free是函数，new和delete是运算符。
+malloc直接分配空间而new是先分配空间再调用构造函数。</p>
+<h3 id="指针的情况">指针的情况</h3>
+<p>指针的值(即地址)应属下列4种状态之一 1.指向一个对象。
+2.指向紧邻对象所占空间的下一个位置。(end迭代器)
+3.空指针，意味着指针没有指向任何对象。
+4.无效指针，也就是上述情况之外的其他值。
+试图拷贝或以其他方式访问无效指针的值都将引发错误。编译器并不负责检査此类错误，这一点和试图使用未经初始化的变量是一样的,访问无效指针的后果无法预计，因此程序员必须清楚任意给定的指针是否有效。尽管第2种和第3种形式的指针是有效的，但其使用同样受到限制;显然这些指针没有指向任何具体对象，所以试图访问此类指针(假定的)对象的行为不被允许。如果这样做了，后果也无法预计。</p>
+<h3 id="万能指针">万能指针</h3>
+<pre class="line-numbers language-c++" data-language="c++"><code class="language-c++">void *p;
+int a&#x3D;1;
+p&#x3D;&amp;a;
+*((int*)p);<span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span><span></span></span></code></pre>
+<p>万能指针不受类型限制，可以指向任意类型的对象。但是解引用时则必须进行类型转换</p>
+<h2 id="const">3，const</h2>
+<p>需要注意const只在本文件内有效，有点像#define的效果，编译器会把const替换成具体的值。多个文件如果重复定义const，那么它们也是独立的值，互不影响。而extenrn则是在其他文件中定义的const，需要在本文件中使用。可以避免多开销。
+<pre class="line-numbers language-c++" data-language="c++"><code class="language-c++">double pi&#x3D;3.14;
+&#x2F;&#x2F;int &amp;a&#x3D;pi; &#x2F;&#x2F;错误，类型不匹配
+const int &amp;a&#x3D;pi; &#x2F;&#x2F;正确<span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span></span></code></pre>
+其实在上述情况编译器进行了隐式转换，把pi转换成了int类型。只有constt才可以这样。</p>
+<p>重要的一点要区分以下两个： <pre class="line-numbers language-c++" data-language="c++"><code class="language-c++">int a&#x3D;5;
+const int* p&#x3D;&amp;a;&#x2F;&#x2F;1.
+int const* p&#x3D;&amp;a;&#x2F;&#x2F;2.<span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span></span></code></pre>
+第一个是表示不能通过p解引用来修改a的值，但是p存储的地址可以被修改即可以让p指向其他变量。而第二个则表示p存储的地址不能被修改，即不能指向其他变量了，但可以通过解引用修改p指向的值。
+<pre class="line-numbers language-c++" data-language="c++"><code class="language-c++">const int* const p&#x3D;&amp;a;&#x2F;&#x2F;3.<span aria-hidden="true" class="line-numbers-rows"><span></span></span></code></pre>
+第三种情况最惨，p存储的地址和p指向的值都不能被修改。属于是集百家之短了。</p>
+<h2 id="auto和decltype">4，auto和decltype</h2>
+<p>auto是c++11引入的关键字，用于自动推导变量的类型。 <pre class="line-numbers language-c++" data-language="c++"><code class="language-c++">auto a&#x3D;1;
+auto b&#x3D;1.0;
+auto c&#x3D;&#39;a&#39;;
+auto d&#x3D;&quot;hello world&quot;;<span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span><span></span></span></code></pre> ###
+auto的const auto会忽略掉顶层const，保留底层const。 <pre class="line-numbers language-c++" data-language="c++"><code class="language-c++">const int a&#x3D;1;
+auto b&#x3D;a; &#x2F;&#x2F;b的类型是int<span aria-hidden="true" class="line-numbers-rows"><span></span><span></span></span></code></pre> ###
+auto的引用 auto会忽略掉引用。 <pre class="line-numbers language-c++" data-language="c++"><code class="language-c++">int a&#x3D;1;
+auto &amp;b&#x3D;a; &#x2F;&#x2F;b的类型是int<span aria-hidden="true" class="line-numbers-rows"><span></span><span></span></span></code></pre> ### auto的数组
+auto会忽略掉数组的维度。 <pre class="line-numbers language-c++" data-language="c++"><code class="language-c++">int a[10];
+auto b&#x3D;a; &#x2F;&#x2F;b的类型是int*<span aria-hidden="true" class="line-numbers-rows"><span></span><span></span></span></code></pre> ### auto的指针
+auto会忽略掉指针的星号。 <pre class="line-numbers language-c++" data-language="c++"><code class="language-c++">int *a;
+auto b&#x3D;a; &#x2F;&#x2F;b的类型是int<span aria-hidden="true" class="line-numbers-rows"><span></span><span></span></span></code></pre> ### decltype
+decltype是c++11引入的关键字，用于获取变量的类型。 <pre class="line-numbers language-c++" data-language="c++"><code class="language-c++">int a&#x3D;1;
+decltype(a) b&#x3D;a; &#x2F;&#x2F;b的类型是int<span aria-hidden="true" class="line-numbers-rows"><span></span><span></span></span></code></pre> ###
+decltype的const decltype会保留顶层const。 <pre class="line-numbers language-c++" data-language="c++"><code class="language-c++">const int a&#x3D;1;
+decltype(a) b&#x3D;a; &#x2F;&#x2F;b的类型是const int<span aria-hidden="true" class="line-numbers-rows"><span></span><span></span></span></code></pre> ###
+decltype的引用 decltype会保留引用。 <pre class="line-numbers language-c++" data-language="c++"><code class="language-c++">int a&#x3D;1;
+decltype(a) &amp;b&#x3D;a; &#x2F;&#x2F;b的类型是int&amp;<span aria-hidden="true" class="line-numbers-rows"><span></span><span></span></span></code></pre> ### decltype的数组
+decltype会保留数组的维度。 <pre class="line-numbers language-c++" data-language="c++"><code class="language-c++">int a[10];
+decltype(a) b&#x3D;a; &#x2F;&#x2F;b的类型是int[10]<span aria-hidden="true" class="line-numbers-rows"><span></span><span></span></span></code></pre> ### decltype的指针
+decltype会保留指针的星号。 <pre class="line-numbers language-c++" data-language="c++"><code class="language-c++">int *a;
+decltype(a) b&#x3D;a; &#x2F;&#x2F;b的类型是int*<span aria-hidden="true" class="line-numbers-rows"><span></span><span></span></span></code></pre></p>
+<h2 id="结构体">5，结构体</h2>
+<p>c++中的结构体十分的灵活，基本上和类的功能和操作一样了，唯一的区别就是结构体的成员默认是public的，而类的成员默认是private的。实际用法上，结构体用于存储数据，而类用于封装数据和操作。、</p>
+<h2 id="仿函数">6，仿函数</h2>
+<p>又称函数对象，是一个类，重载了()运算符，使得该类的对象可以像函数一样调用。
+<pre class="line-numbers language-c++" data-language="c++"><code class="language-c++">class MyClass &#123;
+public:
+    void operator()(int a, int b) &#123;
+        cout &lt;&lt; a + b &lt;&lt; endl;
+    &#125;
+&#125;
+
+MyClass myClass;
+myClass(1, 2); &#x2F;&#x2F;输出3<span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span></code></pre> 优点： 1. 可以像函数一样调用。 2. 可以在类中保存状态。 3.
+可以作为函数参数。 4. 可以作为函数返回值。 5. 可以作为模板参数。 6.
+可以作为STL算法的参数。</p>
+
+    </div>
+
+    
+    
+    
+
+    <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/c/" rel="tag"># c++</a>
+          </div>
+
+        
+
+          <div class="post-nav">
+            <div class="post-nav-item">
+                <a href="/2025/03/09/raytracing-share/" rel="prev" title="光线追踪技术以及c++实现心得">
+                  <i class="fa fa-angle-left"></i> 光线追踪技术以及c++实现心得
+                </a>
+            </div>
+            <div class="post-nav-item">
+            </div>
+          </div>
+    </footer>
+  </article>
+</div>
+
+
+
+
+
+
+</div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+
+  <div class="copyright">
+    &copy; 
+    <span itemprop="copyrightYear">2025</span>
+    <span class="with-love">
+      <i class="fa fa-heart"></i>
+    </span>
+    <span class="author" itemprop="copyrightHolder">游戏开发者</span>
+  </div>
+  <div class="powered-by">由 <a href="https://hexo.io/" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.js.org/muse/" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+    </div>
+  </footer>
+
+  
+  <div class="toggle sidebar-toggle" role="button">
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+  </div>
+  <div class="sidebar-dimmer"></div>
+  <div class="back-to-top" role="button" aria-label="返回顶部">
+    <i class="fa fa-arrow-up fa-lg"></i>
+    <span>0%</span>
+  </div>
+
+<noscript>
+  <div class="noscript-warning">Theme NexT works best with JavaScript enabled</div>
+</noscript>
+
+
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js" integrity="sha256-XL2inqUJaslATFnHdJOi9GfQ60on8Wx1C2H8DYiN1xY=" crossorigin="anonymous"></script>
+<script src="/js/comments.js"></script><script src="/js/utils.js"></script><script src="/js/motion.js"></script><script src="/js/sidebar.js"></script><script src="/js/next-boot.js"></script>
+
+  
+
+
+
+
+
+
+  
+
+
+
+
+  
+
+  <script class="next-config" data-name="enableMath" type="application/json">false</script><script class="next-config" data-name="mathjax" type="application/json">{"enable":true,"tags":"ams","js":{"url":"https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.js","integrity":"sha256-MASABpB4tYktI2Oitl4t+78w/lyA+D7b/s9GEP0JOGI="}}</script>
+<script src="/js/third-party/math/mathjax.js"></script>
+
+
+
+</body>
+</html>
