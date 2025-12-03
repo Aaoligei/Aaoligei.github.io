@@ -228,7 +228,7 @@ mjx-container[display="true"] + br {
   <nav class="site-state">
       <div class="site-state-item site-state-posts">
         <a href="/archives/">
-          <span class="site-state-item-count">4</span>
+          <span class="site-state-item-count">6</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
@@ -237,7 +237,7 @@ mjx-container[display="true"] + br {
         <span class="site-state-item-name">分类</span>
       </div>
       <div class="site-state-item site-state-tags">
-        <span class="site-state-item-count">11</span>
+        <span class="site-state-item-count">15</span>
         <span class="site-state-item-name">标签</span>
       </div>
   </nav>
@@ -254,6 +254,341 @@ mjx-container[display="true"] + br {
     </div>
 
     <div class="main-inner index posts-expand">
+
+    
+
+
+<div class="post-block">
+  
+  
+
+  <article itemscope itemtype="http://schema.org/Article" class="post-content" lang="">
+    <link itemprop="mainEntityOfPage" href="https://aaoligei.github.io/2025/12/03/raytracing-share/HybridPBR-shader/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="游戏开发者">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="游戏技术博客">
+      <meta itemprop="description" content="分享游戏技术开发经验与知识">
+    </span>
+
+    <span hidden itemprop="post" itemscope itemtype="http://schema.org/CreativeWork">
+      <meta itemprop="name" content="undefined | 游戏技术博客">
+      <meta itemprop="description" content="">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          <a href="/2025/12/03/raytracing-share/HybridPBR-shader/" class="post-title-link" itemprop="url">未命名</a>
+        </h2>
+
+        <div class="post-meta-container">
+          <div class="post-meta">
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar"></i>
+      </span>
+      <span class="post-meta-item-text">发表于</span>
+      
+
+      <time title="创建时间：2025-12-03 23:00:00 / 修改时间：23:23:29" itemprop="dateCreated datePublished" datetime="2025-12-03T23:00:00+08:00">2025-12-03</time>
+    </span>
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-folder"></i>
+      </span>
+      <span class="post-meta-item-text">分类于</span>
+        <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+          <a href="/categories/rendering/" itemprop="url" rel="index"><span itemprop="name">渲染技术</span></a>
+        </span>
+    </span>
+
+  
+</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+          <h1 id="hybridpbr-光线追踪着色器优化基础篇">HybridPBR
+光线追踪着色器优化——基础篇</h1>
+<p>在实时渲染与离线渲染的边界日益模糊的今天，在 GPU
+上实现一个高效的路径追踪器（Path
+Tracer）已经成为图形学爱好者的必修课。本文将基于一段核心的 GLSL
+代码，剖析一个简易但功能完备的 PBR
+路径追踪器的实现细节。我们将探讨如何利用蒙特卡洛积分、重要性采样以及"俄罗斯轮盘赌"等技术，在有限的计算资源下画出逼真的光影。</p>
+<h2 id="一-随机数的艺术wang-hash">一、 随机数的艺术：Wang Hash</h2>
+<p>在 GPU
+这种大规模并行计算环境中，生成高质量的伪随机数是蒙特卡洛积分的基石。传统的
+<code>rand()</code> 函数在 Shader
+中不可用，我们需要一个<strong>确定性</strong>但<strong>雪崩效应（Avalanche
+Effect）</strong>极好的哈希函数。</p>
+<h3 id="核心代码">核心代码</h3>
+<pre class="line-numbers language-glsl" data-language="glsl"><code class="language-glsl">uint WangHash(uint seed) &#123;
+    seed &#x3D; (seed ^ 61) ^ (seed &gt;&gt; 16);
+    seed *&#x3D; 9;
+    seed &#x3D; seed ^ (seed &gt;&gt; 4);
+    seed *&#x3D; 0x27d4eb2d;
+    seed &#x3D; seed ^ (seed &gt;&gt; 15);
+    return seed;
+&#125;<span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span></code></pre>
+<p><strong>为什么选择 Wang Hash？</strong> 1.
+<strong>速度快</strong>：全是位运算和乘法，没有昂贵的三角函数或开方。 2.
+<strong>雪崩效应</strong>：输入的微小变化（如像素坐标 x, y
+的差异）会导致输出产生巨大的、不可预测的变化，这对于消除图像中的波纹（Pattern）至关重要。
+3.
+<strong>状态无关</strong>：它是一个纯函数，不需要维护全局状态，非常适合并行计算。</p>
+<p>配合 <code>RandomFloat</code> 将 uint 映射到 <code>[0, 1]</code>
+区间，我们就有了构建整个随机世界的基石。</p>
+<hr />
+<h2 id="二-物理渲染的核心cook-torrance-brdf">二、
+物理渲染的核心：Cook-Torrance BRDF</h2>
+<p>为了让材质看起来真实，我们采用了标准的 Cook-Torrance
+微表面模型。它由三部分组成：法线分布函数（D）、几何遮蔽函数（G）和菲涅尔方程（F）。</p>
+<h3 id="法线分布-ndf---ggx">1. 法线分布 (NDF) - GGX</h3>
+<p>描述微表面法线的朝向分布。表面越粗糙，法线越乱，高光越散。</p>
+<p><span class="math display">\[ D_{GGX}(N, H, \alpha) =
+\frac{\alpha^2}{\pi ((N \cdot H)^2 (\alpha^2 - 1) + 1)^2} \]</span></p>
+<pre class="line-numbers language-glsl" data-language="glsl"><code class="language-glsl">float DistributionGGX(vec3 N, vec3 H, float roughness) &#123;
+    float a &#x3D; roughness * roughness;
+    float a2 &#x3D; a * a;
+    float NdotH &#x3D; max(dot(N, H), 0.0);
+    float NdotH2 &#x3D; NdotH * NdotH;
+    float num &#x3D; a2;
+    float denom &#x3D; (NdotH2 * (a2 - 1.0) + 1.0);
+    return num &#x2F; (PI * denom * denom + 1e-6);
+&#125;<span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span></code></pre>
+<h3 id="几何遮蔽-geometry---smith">2. 几何遮蔽 (Geometry) - Smith</h3>
+<p>描述微表面之间相互遮挡（Shadowing）和掩蔽（Masking）的概率。</p>
+<p><span class="math display">\[ G(N, V, L, k) = \frac{N \cdot V}{(N
+\cdot V)(1-k) + k} \times \frac{N \cdot L}{(N \cdot L)(1-k) + k}
+\]</span></p>
+<pre class="line-numbers language-glsl" data-language="glsl"><code class="language-glsl">float GeometrySchlickGGX(float NdotV, float roughness) &#123;
+    float r &#x3D; (roughness + 1.0);
+    float k &#x3D; (r * r) * 0.125; 
+    float num &#x3D; NdotV;
+    float denom &#x3D; NdotV * (1.0 - k) + k;
+    return num &#x2F; (denom + 1e-6);
+&#125;<span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span></code></pre>
+<h3 id="菲涅尔-fresnel---schlick近似">3. 菲涅尔 (Fresnel) -
+Schlick近似</h3>
+<p>描述反射率随视角的变化。掠射角（视角与法线垂直）时反射率趋近于
+1。</p>
+<p><span class="math display">\[ F_{Schlick}(cos\theta, F_0) = F_0 + (1
+- F_0)(1 - cos\theta)^5 \]</span></p>
+<pre class="line-numbers language-glsl" data-language="glsl"><code class="language-glsl">vec3 FresnelSchlick(float cosTheta, vec3 F0) &#123;
+    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+&#125;<span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span></span></code></pre>
+<hr />
+<h2 id="三-直接光照优化随机光源采样">三、
+直接光照优化：随机光源采样</h2>
+<p>这是路径追踪中最关键的优化之一。如果我们场景里有 100
+个光源，每一帧对每个像素都循环计算 100 次光照简直是灾难。</p>
+<p><strong>蒙特卡洛策略：</strong> 我们<strong>只随机挑选 1
+个光源</strong>进行计算，但将结果乘以光源总数（<code>lightCount</code>）。</p>
+<h3 id="数学原理">数学原理</h3>
+<p>直接光照积分原本是求和： <span class="math display">\[ L_{dir} =
+\sum_{i=1}^{N} L_i(\dots) \]</span> 现在的估计量是： <span
+class="math display">\[ E[L_{dir}] = \frac{L_{chosen}}{P(chosen)}
+\]</span> 如果均匀采样，选到任意一个灯的概率 <span
+class="math inline">\(P = 1/N\)</span>。 <span class="math display">\[
+\therefore Result = L_{chosen} \times N \]</span></p>
+<h3 id="代码解析">代码解析</h3>
+<pre class="line-numbers language-glsl" data-language="glsl"><code class="language-glsl">&#x2F;&#x2F; 1. 随机挑一个
+int lightIndex &#x3D; int(RandomFloat(seed) * float(lightCount));
+&#x2F;&#x2F; ... 计算 L, attenuation, shadow ...
+
+&#x2F;&#x2F; 2. 计算光照贡献 Lo
+vec3 Lo &#x3D; (kD * surf.albedo * INV_PI + specular) * radiance * NdotL;
+
+&#x2F;&#x2F; 3. 权重补偿：期望正确
+return Lo * float(lightCount);<span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span></code></pre>
+<blockquote>
+<p><strong>通俗解释</strong>：就像请客吃饭。为了省事（省算力），我只随机请
+<strong>一个</strong> 光源吃饭，但在结账时，我按
+<strong>所有人头（lightCount）</strong> 实行 AA
+制。虽然单次看账单波动很大（有时抽到大灯，有时抽到没电的灯），但在时间积累下，<strong>期望账单</strong>和请所有人吃饭是一模一样的。</p>
+</blockquote>
+<hr />
+<h2 id="四-路径追踪主循环-tracepath">四、 路径追踪主循环
+(TracePath)</h2>
+<p>这是渲染器的引擎。它不再使用递归（GLSL 对递归支持很差），而是使用
+<code>for</code> 循环进行迭代。</p>
+<h3 id="核心流程图">核心流程图</h3>
+<ol type="1">
+<li><strong>射线求交</strong>：没打中物体 -&gt; 返回天空色。</li>
+<li><strong>直接光采样 (NEE)</strong>：主动连接光源，计算直接照明。</li>
+<li><strong>俄罗斯轮盘赌</strong>：决定光线是否“死亡”。</li>
+<li><strong>BSDF 采样</strong>：计算下一条光线的反弹方向。</li>
+</ol>
+<h3 id="关键技术点">关键技术点</h3>
+<h4 id="俄罗斯轮盘赌-russian-roulette">1. 俄罗斯轮盘赌 (Russian
+Roulette)</h4>
+<p>随着光线不断弹射，能量 <code>throughput</code>
+会越来越小。继续计算微弱的光线对画面贡献很低，却浪费算力。 <pre class="line-numbers language-glsl" data-language="glsl"><code class="language-glsl">float p &#x3D; max(max(throughput.r, throughput.g), throughput.b);
+if (RandomFloat(seed) &gt; p) break; &#x2F;&#x2F; 概率性死亡
+throughput &#x2F;&#x3D; p; &#x2F;&#x2F; 生存下来的光线能量加倍补偿，保证无偏<span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span></span></code></pre>
+这保证了路径长度是有限的，但数学期望上能量不会损失。</p>
+<h4 id="下一跳方向的选择">2. 下一跳方向的选择</h4>
+<p>代码根据菲涅尔项（F）动态决定光线是发生<strong>镜面反射</strong>还是<strong>漫反射</strong>。</p>
+<ul>
+<li><strong>镜面概率</strong>：取决于材质的金属度和当前的菲涅尔反射率。</li>
+<li><strong>漫反射</strong>：使用余弦加权采样（Cosine Weighted
+Sampling），即 <code>normalize(N + RandomSphere)</code>。</li>
+<li><strong>镜面</strong>：使用重要性采样，朝反射方向附近抖动（粗糙度决定抖动范围）。</li>
+</ul>
+<pre class="line-numbers language-glsl" data-language="glsl"><code class="language-glsl">if (RandomFloat(seed) &lt; specProb) &#123;
+    &#x2F;&#x2F; 镜面反射分支：完美反射方向 + 粗糙度扰动
+    vec3 reflectDir &#x3D; reflect(-V, shadingNormal);
+    nextDir &#x3D; normalize(reflectDir + RandomInUnitSphere(seed) * surf.roughness);
+    throughput *&#x3D; F; &#x2F;&#x2F; 能量乘以菲涅尔项
+&#125; else &#123;
+    &#x2F;&#x2F; 漫反射分支
+    nextDir &#x3D; normalize(shadingNormal + RandomInUnitSphere(seed));
+    throughput *&#x3D; surf.albedo; &#x2F;&#x2F; 能量乘以反照率
+&#125;<span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span></code></pre>
+<hr />
+<h2 id="五-时间积累-temporal-accumulation">五、 时间积累 (Temporal
+Accumulation)</h2>
+<p>单帧的路径追踪充满了噪点（Noise）。为了得到平滑的图像，我们利用时间的维度。</p>
+<pre class="line-numbers language-glsl" data-language="glsl"><code class="language-glsl">if (frameNumber &#x3D;&#x3D; 0) &#123;
+    &#x2F;&#x2F; 第一帧直接写入
+    outputPixels[pixelIndex] &#x3D; vec4(currentColor, 1.0);
+&#125; else &#123;
+    &#x2F;&#x2F; 后续帧：当前颜色与历史颜色混合
+    vec3 history &#x3D; accumulationPixels[pixelIndex].rgb;
+    &#x2F;&#x2F; 混合权重 1&#x2F;(N+1)，也就是累加平均
+    vec3 newColor &#x3D; mix(history, currentColor, 1.0 &#x2F; float(frameNumber + 1)); 
+    outputPixels[pixelIndex] &#x3D; vec4(newColor, 1.0);
+&#125;<span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span></code></pre>
+<p>通过 <code>mix</code> 函数，我们将每一帧的结果平均化。随着
+<code>frameNumber</code>
+增加，新的一帧权重越来越小，画面逐渐收敛，噪点消失，最终得到一张完美的渲染图。</p>
+<hr />
+<h2 id="总结">总结</h2>
+<p>这段 Shader 代码展示了一个现代 GPU 路径追踪器的最小闭环： * 用
+<strong>Wang Hash</strong> 制造混沌。 * 用 <strong>PBR</strong>
+约束光影的物理规律。 * 用 <strong>随机光源采样</strong>
+解决直接光照的性能瓶颈。 * 用 <strong>俄罗斯轮盘赌</strong> 和
+<strong>时间积累</strong> 平衡效率与质量。</p>
+<p>掌握这些基础，你就在写出自己的“Cyberpunk”渲染器的路上迈出了坚实的一步。</p>
+
+      
+    </div>
+
+    
+    
+    
+
+    <footer class="post-footer">
+        <div class="post-eof"></div>
+      
+    </footer>
+  </article>
+</div>
+
+
+
+
+    
+
+
+<div class="post-block">
+  
+  
+
+  <article itemscope itemtype="http://schema.org/Article" class="post-content" lang="">
+    <link itemprop="mainEntityOfPage" href="https://aaoligei.github.io/2025/10/13/procedural-map-generation/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="游戏开发者">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="游戏技术博客">
+      <meta itemprop="description" content="分享游戏技术开发经验与知识">
+    </span>
+
+    <span hidden itemprop="post" itemscope itemtype="http://schema.org/CreativeWork">
+      <meta itemprop="name" content="undefined | 游戏技术博客">
+      <meta itemprop="description" content="">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          <a href="/2025/10/13/procedural-map-generation/" class="post-title-link" itemprop="url">程序化地图生成技术详解</a>
+        </h2>
+
+        <div class="post-meta-container">
+          <div class="post-meta">
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar"></i>
+      </span>
+      <span class="post-meta-item-text">发表于</span>
+
+      <time title="创建时间：2025-10-13 12:00:00" itemprop="dateCreated datePublished" datetime="2025-10-13T12:00:00+08:00">2025-10-13</time>
+    </span>
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar-check"></i>
+      </span>
+      <span class="post-meta-item-text">更新于</span>
+      <time title="修改时间：2025-10-19 00:25:18" itemprop="dateModified" datetime="2025-10-19T00:25:18+08:00">2025-10-19</time>
+    </span>
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-folder"></i>
+      </span>
+      <span class="post-meta-item-text">分类于</span>
+        <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+          <a href="/categories/game-algorithm/" itemprop="url" rel="index"><span itemprop="name">游戏算法</span></a>
+        </span>
+    </span>
+
+  
+</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+          <h1 id="程序化地图生成技术详解">程序化地图生成技术详解</h1>
+<h2 id="引言">引言</h2>
+<p>在现代游戏开发中，程序化内容生成（Procedural Content Generation,
+PCG）是一项关键技术，它能够自动生成游戏内容，如关卡、地图、纹理等。这种方法不仅可以大大减少开发者的手动工作量，还能创造出几乎无限的变化，增强游戏的可重玩性。本文将深入探讨程序化地图生成的各种技术和算法。</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/10/13/procedural-map-generation/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+
+    <footer class="post-footer">
+        <div class="post-eof"></div>
+      
+    </footer>
+  </article>
+</div>
+
+
+
 
     
 
