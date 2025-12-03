@@ -1,7 +1,7 @@
 <h1 id="hybridpbr-光线追踪着色器优化基础篇">HybridPBR
 光线追踪着色器优化——基础篇</h1>
 <p>date: 2025-12-03 23:00:00 categories: - 渲染技术 tags: - 光线追踪 -
-着色器 - OpenGL - GLSL - 计算机图形学 ---</p>
+着色器 - OpenGL - GLSL - 计算机图形学 mathjax: true ---</p>
 <h1 id="hybridpbr-光线追踪着色器优化基础篇-1">HybridPBR
 光线追踪着色器优化——基础篇</h1>
 <p>在实时渲染与离线渲染的边界日益模糊的今天，在 GPU
@@ -16,65 +16,61 @@ Tracer）已经成为图形学爱好者的必修课。本文将基于一段核�
 中不可用，我们需要一个<strong>确定性</strong>但<strong>雪崩效应（Avalanche
 Effect）</strong>极好的哈希函数。</p>
 <h3 id="核心代码">核心代码</h3>
-<div class="sourceCode" id="cb1"><pre
-class="sourceCode glsl"><code class="sourceCode glsl"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="dt">uint</span> <span class="fu">WangHash</span><span class="op">(</span><span class="dt">uint</span> seed<span class="op">)</span> <span class="op">{</span></span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    seed <span class="op">=</span> <span class="op">(</span>seed <span class="op">^</span> <span class="dv">61</span><span class="op">)</span> <span class="op">^</span> <span class="op">(</span>seed <span class="op">&gt;&gt;</span> <span class="dv">16</span><span class="op">);</span></span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    seed <span class="op">*=</span> <span class="dv">9</span><span class="op">;</span></span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    seed <span class="op">=</span> seed <span class="op">^</span> <span class="op">(</span>seed <span class="op">&gt;&gt;</span> <span class="dv">4</span><span class="op">);</span></span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    seed <span class="op">*=</span> <span class="bn">0x27d4eb2d</span><span class="op">;</span></span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    seed <span class="op">=</span> seed <span class="op">^</span> <span class="op">(</span>seed <span class="op">&gt;&gt;</span> <span class="dv">15</span><span class="op">);</span></span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    <span class="kw">return</span> seed<span class="op">;</span></span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
-<p><strong>为什么选择 Wang Hash？</strong> 1.
-<strong>速度快</strong>：全是位运算和乘法，没有昂贵的三角函数或开方。 2.
-<strong>雪崩效应</strong>：输入的微小变化（如像素坐标 x, y
-的差异）会导致输出产生巨大的、不可预测的变化，这对于消除图像中的波纹（Pattern）至关重要。
-3.
-<strong>状态无关</strong>：它是一个纯函数，不需要维护全局状态，非常适合并行计算。</p>
-<p>配合 <code>RandomFloat</code> 将 uint 映射到 <code>[0, 1]</code>
-区间，我们就有了构建整个随机世界的基石。</p>
-<hr />
-<h2 id="二-物理渲染的核心cook-torrance-brdf">二、
-物理渲染的核心：Cook-Torrance BRDF</h2>
-<p>为了让材质看起来真实，我们采用了标准的 Cook-Torrance
-微表面模型。它由三部分组成：法线分布函数（D）、几何遮蔽函数（G）和菲涅尔方程（F）。</p>
-<h3 id="法线分布-ndf---ggx">1. 法线分布 (NDF) - GGX</h3>
-<p>描述微表面法线的朝向分布。表面越粗糙，法线越乱，高光越散。</p>
-<p><span class="math display">\[ D_{GGX}(N, H, \alpha) =
-\frac{\alpha^2}{\pi ((N \cdot H)^2 (\alpha^2 - 1) + 1)^2} \]</span></p>
-<div class="sourceCode" id="cb2"><pre
-class="sourceCode glsl"><code class="sourceCode glsl"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="dt">float</span> <span class="fu">DistributionGGX</span><span class="op">(</span><span class="dt">vec3</span> N<span class="op">,</span> <span class="dt">vec3</span> H<span class="op">,</span> <span class="dt">float</span> roughness<span class="op">)</span> <span class="op">{</span></span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span> a <span class="op">=</span> roughness <span class="op">*</span> roughness<span class="op">;</span></span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span> a2 <span class="op">=</span> a <span class="op">*</span> a<span class="op">;</span></span>
-<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span> NdotH <span class="op">=</span> <span class="bu">max</span><span class="op">(</span><span class="bu">dot</span><span class="op">(</span>N<span class="op">,</span> H<span class="op">),</span> <span class="fl">0.0</span><span class="op">);</span></span>
-<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span> NdotH2 <span class="op">=</span> NdotH <span class="op">*</span> NdotH<span class="op">;</span></span>
-<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span> num <span class="op">=</span> a2<span class="op">;</span></span>
-<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span> denom <span class="op">=</span> <span class="op">(</span>NdotH2 <span class="op">*</span> <span class="op">(</span>a2 <span class="op">-</span> <span class="fl">1.0</span><span class="op">)</span> <span class="op">+</span> <span class="fl">1.0</span><span class="op">);</span></span>
-<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    <span class="kw">return</span> num <span class="op">/</span> <span class="op">(</span>PI <span class="op">*</span> denom <span class="op">*</span> denom <span class="op">+</span> <span class="fl">1e-6</span><span class="op">);</span></span>
-<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>``glsl uint WangHash(uint seed) { seed = (seed ^ 61) ^ (seed &gt;&gt;
+16); seed <em>= 9; seed = seed ^ (seed &gt;&gt; 4); seed </em>=
+0x27d4eb2d; seed = seed ^ (seed &gt;&gt; 15); return seed; }</p>
+<pre><code>
+**为什么选择 Wang Hash？**
+1.  **速度快**：全是位运算和乘法，没有昂贵的三角函数或开方。
+2.  **雪崩效应**：输入的微小变化（如像素坐标 x, y 的差异）会导致输出产生巨大的、不可预测的变化，这对于消除图像中的波纹（Pattern）至关重要。
+3.  **状态无关**：它是一个纯函数，不需要维护全局状态，非常适合并行计算。
+
+配合 `RandomFloat` 将 uint 映射到 `[0, 1]` 区间，我们就有了构建整个随机世界的基石。
+
+---
+
+## 二、 物理渲染的核心：Cook-Torrance BRDF
+
+为了让材质看起来真实，我们采用了标准的 Cook-Torrance 微表面模型。它由三部分组成：法线分布函数（D）、几何遮蔽函数（G）和菲涅尔方程（F）。
+
+### 1. 法线分布 (NDF) - GGX
+描述微表面法线的朝向分布。表面越粗糙，法线越乱，高光越散。
+
+$$ D_{GGX}(N, H, \alpha) = \frac{\alpha^2}{\pi ((N \cdot H)^2 (\alpha^2 - 1) + 1)^2} $$
+
+```glsl
+float DistributionGGX(vec3 N, vec3 H, float roughness) {
+    float a = roughness * roughness;
+    float a2 = a * a;
+    float NdotH = max(dot(N, H), 0.0);
+    float NdotH2 = NdotH * NdotH;
+    float num = a2;
+    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+    return num / (PI * denom * denom + 1e-6);
+}</code></pre>
 <h3 id="几何遮蔽-geometry---smith">2. 几何遮蔽 (Geometry) - Smith</h3>
 <p>描述微表面之间相互遮挡（Shadowing）和掩蔽（Masking）的概率。</p>
 <p><span class="math display">\[ G(N, V, L, k) = \frac{N \cdot V}{(N
 \cdot V)(1-k) + k} \times \frac{N \cdot L}{(N \cdot L)(1-k) + k}
 \]</span></p>
-<div class="sourceCode" id="cb3"><pre
-class="sourceCode glsl"><code class="sourceCode glsl"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="dt">float</span> <span class="fu">GeometrySchlickGGX</span><span class="op">(</span><span class="dt">float</span> NdotV<span class="op">,</span> <span class="dt">float</span> roughness<span class="op">)</span> <span class="op">{</span></span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span> r <span class="op">=</span> <span class="op">(</span>roughness <span class="op">+</span> <span class="fl">1.0</span><span class="op">);</span></span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span> k <span class="op">=</span> <span class="op">(</span>r <span class="op">*</span> r<span class="op">)</span> <span class="op">*</span> <span class="fl">0.125</span><span class="op">;</span> </span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span> num <span class="op">=</span> NdotV<span class="op">;</span></span>
-<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span> denom <span class="op">=</span> NdotV <span class="op">*</span> <span class="op">(</span><span class="fl">1.0</span> <span class="op">-</span> k<span class="op">)</span> <span class="op">+</span> k<span class="op">;</span></span>
-<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">return</span> num <span class="op">/</span> <span class="op">(</span>denom <span class="op">+</span> <span class="fl">1e-6</span><span class="op">);</span></span>
-<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode glsl"><code class="sourceCode glsl"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="dt">float</span> <span class="fu">GeometrySchlickGGX</span><span class="op">(</span><span class="dt">float</span> NdotV<span class="op">,</span> <span class="dt">float</span> roughness<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span> r <span class="op">=</span> <span class="op">(</span>roughness <span class="op">+</span> <span class="fl">1.0</span><span class="op">);</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span> k <span class="op">=</span> <span class="op">(</span>r <span class="op">*</span> r<span class="op">)</span> <span class="op">*</span> <span class="fl">0.125</span><span class="op">;</span> </span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span> num <span class="op">=</span> NdotV<span class="op">;</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span> denom <span class="op">=</span> NdotV <span class="op">*</span> <span class="op">(</span><span class="fl">1.0</span> <span class="op">-</span> k<span class="op">)</span> <span class="op">+</span> k<span class="op">;</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">return</span> num <span class="op">/</span> <span class="op">(</span>denom <span class="op">+</span> <span class="fl">1e-6</span><span class="op">);</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
 <h3 id="菲涅尔-fresnel---schlick近似">3. 菲涅尔 (Fresnel) -
 Schlick近似</h3>
 <p>描述反射率随视角的变化。掠射角（视角与法线垂直）时反射率趋近于
 1。</p>
 <p><span class="math display">\[ F_{Schlick}(cos\theta, F_0) = F_0 + (1
 - F_0)(1 - cos\theta)^5 \]</span></p>
-<div class="sourceCode" id="cb4"><pre
-class="sourceCode glsl"><code class="sourceCode glsl"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="dt">vec3</span> <span class="fu">FresnelSchlick</span><span class="op">(</span><span class="dt">float</span> cosTheta<span class="op">,</span> <span class="dt">vec3</span> F0<span class="op">)</span> <span class="op">{</span></span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">return</span> F0 <span class="op">+</span> <span class="op">(</span><span class="fl">1.0</span> <span class="op">-</span> F0<span class="op">)</span> <span class="op">*</span> <span class="bu">pow</span><span class="op">(</span><span class="bu">clamp</span><span class="op">(</span><span class="fl">1.0</span> <span class="op">-</span> cosTheta<span class="op">,</span> <span class="fl">0.0</span><span class="op">,</span> <span class="fl">1.0</span><span class="op">),</span> <span class="fl">5.0</span><span class="op">);</span></span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode glsl"><code class="sourceCode glsl"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="dt">vec3</span> <span class="fu">FresnelSchlick</span><span class="op">(</span><span class="dt">float</span> cosTheta<span class="op">,</span> <span class="dt">vec3</span> F0<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">return</span> F0 <span class="op">+</span> <span class="op">(</span><span class="fl">1.0</span> <span class="op">-</span> F0<span class="op">)</span> <span class="op">*</span> <span class="bu">pow</span><span class="op">(</span><span class="bu">clamp</span><span class="op">(</span><span class="fl">1.0</span> <span class="op">-</span> cosTheta<span class="op">,</span> <span class="fl">0.0</span><span class="op">,</span> <span class="fl">1.0</span><span class="op">),</span> <span class="fl">5.0</span><span class="op">);</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
 <hr />
 <h2 id="三-直接光照优化随机光源采样">三、
 直接光照优化：随机光源采样</h2>
@@ -90,43 +86,34 @@ class="math display">\[ E[L_{dir}] = \frac{L_{chosen}}{P(chosen)}
 class="math inline">\(P = 1/N\)</span>。 <span class="math display">\[
 \therefore Result = L_{chosen} \times N \]</span></p>
 <h3 id="代码解析">代码解析</h3>
-<div class="sourceCode" id="cb5"><pre
-class="sourceCode glsl"><code class="sourceCode glsl"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co">// 1. 随机挑一个</span></span>
-<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="dt">int</span> lightIndex <span class="op">=</span> <span class="dt">int</span><span class="op">(</span><span class="fu">RandomFloat</span><span class="op">(</span>seed<span class="op">)</span> <span class="op">*</span> <span class="dt">float</span><span class="op">(</span>lightCount<span class="op">));</span></span>
-<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="co">// ... 计算 L, attenuation, shadow ...</span></span>
-<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="co">// 2. 计算光照贡献 Lo</span></span>
-<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="dt">vec3</span> Lo <span class="op">=</span> <span class="op">(</span>kD <span class="op">*</span> surf<span class="op">.</span><span class="fu">albedo</span> <span class="op">*</span> INV_PI <span class="op">+</span> specular<span class="op">)</span> <span class="op">*</span> radiance <span class="op">*</span> NdotL<span class="op">;</span></span>
-<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="co">// 3. 权重补偿：期望正确</span></span>
-<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a><span class="kw">return</span> Lo <span class="op">*</span> <span class="dt">float</span><span class="op">(</span>lightCount<span class="op">);</span></span></code></pre></div>
-<blockquote>
-<p><strong>通俗解释</strong>：就像请客吃饭。为了省事（省算力），我只随机请
-<strong>一个</strong> 光源吃饭，但在结账时，我按
-<strong>所有人头（lightCount）</strong> 实行 AA
-制。虽然单次看账单波动很大（有时抽到大灯，有时抽到没电的灯），但在时间积累下，<strong>期望账单</strong>和请所有人吃饭是一模一样的。</p>
-</blockquote>
-<hr />
-<h2 id="四-路径追踪主循环-tracepath">四、 路径追踪主循环
-(TracePath)</h2>
-<p>这是渲染器的引擎。它不再使用递归（GLSL 对递归支持很差），而是使用
-<code>for</code> 循环进行迭代。</p>
-<h3 id="核心流程图">核心流程图</h3>
-<ol type="1">
-<li><strong>射线求交</strong>：没打中物体 -&gt; 返回天空色。</li>
-<li><strong>直接光采样 (NEE)</strong>：主动连接光源，计算直接照明。</li>
-<li><strong>俄罗斯轮盘赌</strong>：决定光线是否“死亡”。</li>
-<li><strong>BSDF 采样</strong>：计算下一条光线的反弹方向。</li>
-</ol>
-<h3 id="关键技术点">关键技术点</h3>
-<h4 id="俄罗斯轮盘赌-russian-roulette">1. 俄罗斯轮盘赌 (Russian
-Roulette)</h4>
-<p>随着光线不断弹射，能量 <code>throughput</code>
-会越来越小。继续计算微弱的光线对画面贡献很低，却浪费算力。</p>
-<div class="sourceCode" id="cb6"><pre
-class="sourceCode glsl"><code class="sourceCode glsl"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="dt">float</span> p <span class="op">=</span> <span class="bu">max</span><span class="op">(</span><span class="bu">max</span><span class="op">(</span>throughput<span class="op">.</span><span class="fu">r</span><span class="op">,</span> throughput<span class="op">.</span><span class="fu">g</span><span class="op">),</span> throughput<span class="op">.</span><span class="fu">b</span><span class="op">);</span></span>
-<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="kw">if</span> <span class="op">(</span><span class="fu">RandomFloat</span><span class="op">(</span>seed<span class="op">)</span> <span class="op">&gt;</span> p<span class="op">)</span> <span class="kw">break</span><span class="op">;</span> <span class="co">// 概率性死亡</span></span>
-<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>throughput <span class="op">/=</span> p<span class="op">;</span> <span class="co">// 生存下来的光线能量加倍补偿，保证无偏</span></span></code></pre></div>
+<p>``glsl // 1. 随机挑一个 int lightIndex = int(RandomFloat(seed) *
+float(lightCount)); // ... 计算 L, attenuation, shadow ...</p>
+<p>// 2. 计算光照贡献 Lo vec3 Lo = (kD * surf.albedo * INV_PI +
+specular) * radiance * NdotL;</p>
+<p>// 3. 权重补偿：期望正确 return Lo * float(lightCount);</p>
+<pre><code>
+&gt; **通俗解释**：就像请客吃饭。为了省事（省算力），我只随机请 **一个** 光源吃饭，但在结账时，我按 **所有人头（lightCount）** 实行 AA 制。虽然单次看账单波动很大（有时抽到大灯，有时抽到没电的灯），但在时间积累下，**期望账单**和请所有人吃饭是一模一样的。
+
+---
+
+## 四、 路径追踪主循环 (TracePath)
+
+这是渲染器的引擎。它不再使用递归（GLSL 对递归支持很差），而是使用 `for` 循环进行迭代。
+
+### 核心流程图
+1.  **射线求交**：没打中物体 -&gt; 返回天空色。
+2.  **直接光采样 (NEE)**：主动连接光源，计算直接照明。
+3.  **俄罗斯轮盘赌**：决定光线是否“死亡”。
+4.  **BSDF 采样**：计算下一条光线的反弹方向。
+
+### 关键技术点
+
+#### 1. 俄罗斯轮盘赌 (Russian Roulette)
+随着光线不断弹射，能量 `throughput` 会越来越小。继续计算微弱的光线对画面贡献很低，却浪费算力。
+```glsl
+float p = max(max(throughput.r, throughput.g), throughput.b);
+if (RandomFloat(seed) &gt; p) break; // 概率性死亡
+throughput /= p; // 生存下来的光线能量加倍补偿，保证无偏</code></pre>
 <p>这保证了路径长度是有限的，但数学期望上能量不会损失。</p>
 <h4 id="下一跳方向的选择">2. 下一跳方向的选择</h4>
 <p>代码根据菲涅尔项（F）动态决定光线是发生<strong>镜面反射</strong>还是<strong>漫反射</strong>。</p>
@@ -136,32 +123,32 @@ class="sourceCode glsl"><code class="sourceCode glsl"><span id="cb6-1"><a href="
 Sampling），即 <code>normalize(N + RandomSphere)</code>。</li>
 <li><strong>镜面</strong>：使用重要性采样，朝反射方向附近抖动（粗糙度决定抖动范围）。</li>
 </ul>
-<div class="sourceCode" id="cb7"><pre
-class="sourceCode glsl"><code class="sourceCode glsl"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">if</span> <span class="op">(</span><span class="fu">RandomFloat</span><span class="op">(</span>seed<span class="op">)</span> <span class="op">&lt;</span> specProb<span class="op">)</span> <span class="op">{</span></span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">// 镜面反射分支：完美反射方向 + 粗糙度扰动</span></span>
-<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">vec3</span> reflectDir <span class="op">=</span> <span class="bu">reflect</span><span class="op">(-</span>V<span class="op">,</span> shadingNormal<span class="op">);</span></span>
-<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    nextDir <span class="op">=</span> <span class="bu">normalize</span><span class="op">(</span>reflectDir <span class="op">+</span> <span class="fu">RandomInUnitSphere</span><span class="op">(</span>seed<span class="op">)</span> <span class="op">*</span> surf<span class="op">.</span><span class="fu">roughness</span><span class="op">);</span></span>
-<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    throughput <span class="op">*=</span> F<span class="op">;</span> <span class="co">// 能量乘以菲涅尔项</span></span>
-<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span> <span class="kw">else</span> <span class="op">{</span></span>
-<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    <span class="co">// 漫反射分支</span></span>
-<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>    nextDir <span class="op">=</span> <span class="bu">normalize</span><span class="op">(</span>shadingNormal <span class="op">+</span> <span class="fu">RandomInUnitSphere</span><span class="op">(</span>seed<span class="op">));</span></span>
-<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>    throughput <span class="op">*=</span> surf<span class="op">.</span><span class="fu">albedo</span><span class="op">;</span> <span class="co">// 能量乘以反照率</span></span>
-<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode glsl"><code class="sourceCode glsl"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">if</span> <span class="op">(</span><span class="fu">RandomFloat</span><span class="op">(</span>seed<span class="op">)</span> <span class="op">&lt;</span> specProb<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">// 镜面反射分支：完美反射方向 + 粗糙度扰动</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">vec3</span> reflectDir <span class="op">=</span> <span class="bu">reflect</span><span class="op">(-</span>V<span class="op">,</span> shadingNormal<span class="op">);</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    nextDir <span class="op">=</span> <span class="bu">normalize</span><span class="op">(</span>reflectDir <span class="op">+</span> <span class="fu">RandomInUnitSphere</span><span class="op">(</span>seed<span class="op">)</span> <span class="op">*</span> surf<span class="op">.</span><span class="fu">roughness</span><span class="op">);</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    throughput <span class="op">*=</span> F<span class="op">;</span> <span class="co">// 能量乘以菲涅尔项</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span> <span class="kw">else</span> <span class="op">{</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>    <span class="co">// 漫反射分支</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>    nextDir <span class="op">=</span> <span class="bu">normalize</span><span class="op">(</span>shadingNormal <span class="op">+</span> <span class="fu">RandomInUnitSphere</span><span class="op">(</span>seed<span class="op">));</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>    throughput <span class="op">*=</span> surf<span class="op">.</span><span class="fu">albedo</span><span class="op">;</span> <span class="co">// 能量乘以反照率</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
 <hr />
 <h2 id="五-时间积累-temporal-accumulation">五、 时间积累 (Temporal
 Accumulation)</h2>
 <p>单帧的路径追踪充满了噪点（Noise）。为了得到平滑的图像，我们利用时间的维度。</p>
-<div class="sourceCode" id="cb8"><pre
-class="sourceCode glsl"><code class="sourceCode glsl"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">if</span> <span class="op">(</span>frameNumber <span class="op">==</span> <span class="dv">0</span><span class="op">)</span> <span class="op">{</span></span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">// 第一帧直接写入</span></span>
-<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    outputPixels<span class="op">[</span>pixelIndex<span class="op">]</span> <span class="op">=</span> <span class="dt">vec4</span><span class="op">(</span>currentColor<span class="op">,</span> <span class="fl">1.0</span><span class="op">);</span></span>
-<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span> <span class="kw">else</span> <span class="op">{</span></span>
-<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    <span class="co">// 后续帧：当前颜色与历史颜色混合</span></span>
-<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    <span class="dt">vec3</span> history <span class="op">=</span> accumulationPixels<span class="op">[</span>pixelIndex<span class="op">].</span><span class="fu">rgb</span><span class="op">;</span></span>
-<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>    <span class="co">// 混合权重 1/(N+1)，也就是累加平均</span></span>
-<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>    <span class="dt">vec3</span> newColor <span class="op">=</span> <span class="bu">mix</span><span class="op">(</span>history<span class="op">,</span> currentColor<span class="op">,</span> <span class="fl">1.0</span> <span class="op">/</span> <span class="dt">float</span><span class="op">(</span>frameNumber <span class="op">+</span> <span class="dv">1</span><span class="op">));</span> </span>
-<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>    outputPixels<span class="op">[</span>pixelIndex<span class="op">]</span> <span class="op">=</span> <span class="dt">vec4</span><span class="op">(</span>newColor<span class="op">,</span> <span class="fl">1.0</span><span class="op">);</span></span>
-<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode glsl"><code class="sourceCode glsl"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">if</span> <span class="op">(</span>frameNumber <span class="op">==</span> <span class="dv">0</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">// 第一帧直接写入</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    outputPixels<span class="op">[</span>pixelIndex<span class="op">]</span> <span class="op">=</span> <span class="dt">vec4</span><span class="op">(</span>currentColor<span class="op">,</span> <span class="fl">1.0</span><span class="op">);</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span> <span class="kw">else</span> <span class="op">{</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    <span class="co">// 后续帧：当前颜色与历史颜色混合</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>    <span class="dt">vec3</span> history <span class="op">=</span> accumulationPixels<span class="op">[</span>pixelIndex<span class="op">].</span><span class="fu">rgb</span><span class="op">;</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    <span class="co">// 混合权重 1/(N+1)，也就是累加平均</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>    <span class="dt">vec3</span> newColor <span class="op">=</span> <span class="bu">mix</span><span class="op">(</span>history<span class="op">,</span> currentColor<span class="op">,</span> <span class="fl">1.0</span> <span class="op">/</span> <span class="dt">float</span><span class="op">(</span>frameNumber <span class="op">+</span> <span class="dv">1</span><span class="op">));</span> </span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>    outputPixels<span class="op">[</span>pixelIndex<span class="op">]</span> <span class="op">=</span> <span class="dt">vec4</span><span class="op">(</span>newColor<span class="op">,</span> <span class="fl">1.0</span><span class="op">);</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
 <p>通过 <code>mix</code> 函数，我们将每一帧的结果平均化。随着
 <code>frameNumber</code>
 增加，新的一帧权重越来越小，画面逐渐收敛，噪点消失，最终得到一张完美的渲染图。</p>
@@ -172,4 +159,4 @@ class="sourceCode glsl"><code class="sourceCode glsl"><span id="cb8-1"><a href="
 约束光影的物理规律。 * 用 <strong>随机光源采样</strong>
 解决直接光照的性能瓶颈。 * 用 <strong>俄罗斯轮盘赌</strong> 和
 <strong>时间积累</strong> 平衡效率与质量。</p>
-<p>掌握这些基础，你就在写出自己的“Cyberpunk”渲染器的路上迈出了坚实的一步。</p>
+<p>掌握这些基础，你就在写出自己的“Cyberpunk”渲染器的路上迈出了坚实的一步.</p>
